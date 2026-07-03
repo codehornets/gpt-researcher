@@ -1,0 +1,40 @@
+# Railway build for gpt-researcher (HTTP API only — no Next.js frontend).
+#
+# The repo ships ./Dockerfile, which ALSO installs Chromium + Firefox webdrivers
+# for Selenium-based scraping (~700 MB). The default GPT-Researcher retrievers
+# (Tavily, DuckDuckGo/ddgs, arXiv) are pure HTTP and need no browser, so this
+# Railway image omits the drivers. Re-add them (see ./Dockerfile stage 1) only if
+# you switch to a browser-based scraper.
+#
+# Additive + rebase-clean: this is a NEW file alongside the vendored source;
+# ./Dockerfile is untouched and remains the canonical full build.
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_ROOT_USER_ACTION=ignore \
+    HOST=0.0.0.0
+
+# System libs for WeasyPrint/md2pdf (PDF export) + build tools for native wheels.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+      libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
+      libffi-dev libcairo2 shared-mime-info \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src/app
+
+# Install deps first for layer caching (mirrors ./Dockerfile: core + multi_agents).
+COPY requirements.txt ./requirements.txt
+COPY multi_agents/requirements.txt ./multi_agents/requirements.txt
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt --prefer-binary \
+    && pip install --no-cache-dir -r multi_agents/requirements.txt --prefer-binary
+
+COPY . .
+
+# Runtime scratch dirs the server expects (outputs/, logs/, my-docs/).
+RUN mkdir -p outputs logs my-docs
+
+# main:app resolves to backend.server.app:app (FastAPI). The repo's own Dockerfile
+# uses the same `uvicorn main:app`. Bind Railway's injected $PORT (default 8000).
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -95,6 +95,10 @@ async def lifespan(app: FastAPI):
 # App initialization
 app = FastAPI(lifespan=lifespan)
 
+# Async jobs API for server-to-server callers (see server/jobs.py).
+from server.jobs import router as jobs_router
+app.include_router(jobs_router)
+
 # Configure allowed origins for CORS
 allowed_origins_env = os.getenv("CORS_ALLOW_ORIGINS")
 ALLOWED_ORIGINS = (
